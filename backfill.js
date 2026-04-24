@@ -51,11 +51,11 @@ const TOKENS = {
 const sleep  = ms => new Promise(r => setTimeout(r, ms));
 const tsDate = ts => new Date(ts * 1000).toISOString().split('T')[0];
 const nowTs  = ()  => Math.floor(Date.now() / 1000);
-const WEEK   = 7 * 24 * 3600;
+const DAY    = 24 * 3600;
 
-function weeklyTimestamps(startTs, endTs) {
+function dailyTimestamps(startTs, endTs) {
   const out = [];
-  for (let t = startTs; t <= endTs; t += WEEK) out.push(t);
+  for (let t = startTs; t <= endTs; t += DAY) out.push(t);
   return out;
 }
 
@@ -210,7 +210,7 @@ async function backfillEthereum(store) {
       continue;
     }
 
-    const timestamps = weeklyTimestamps(creationTs, nowTs());
+    const timestamps = dailyTimestamps(creationTs, nowTs());
     console.log(`  Building ${timestamps.length} weekly snapshots...`);
 
     let done = 0;
@@ -264,7 +264,7 @@ async function backfillXRPL(store) {
 
   // Go back 2 years weekly
   const startTs  = nowTs() - 2 * 365 * 24 * 3600;
-  const timestamps = weeklyTimestamps(startTs, nowTs());
+  const timestamps = dailyTimestamps(startTs, nowTs());
 
   console.log(`  Building ${timestamps.length} weekly XRPL snapshots...`);
 
@@ -362,11 +362,11 @@ async function main() {
   console.log('════════════════════════════════════════');
   console.log('  SG Forge · Historical Backfill        ');
   console.log('════════════════════════════════════════');
-  console.log('Ethereum   : full weekly history from contract creation');
-  console.log('XRPL       : estimated weekly history (last 2 years)');
+  console.log('Ethereum   : full daily history from contract creation');
+  console.log('XRPL       : estimated daily history (last 2 years)');
   console.log('Stellar    : current snapshot only');
   console.log('Solana     : current snapshot only (no free archive RPC)');
-  console.log('\nEstimated time: 3–8 minutes\n');
+  console.log('\nEstimated time: 15–25 minutes\n');
 
   // Load existing data, indexed by date (we'll rebuild from this)
   const store = {};
