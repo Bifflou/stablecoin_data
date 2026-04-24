@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SG Forge · Stablecoin Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0d1117;
+      --surface: #161b22;
+      --border:  #30363d;
+      --text:    #e6edf3;
+      --muted:   #8b949e;
+      --grid:    #21262d;
+
+      --eurcv:   #4f8ef7;
+      --usdcv:   #3dd68c;
+      --eth:     #8c8dfe;
+      --sol:     #f7768e;
+      --xrpl:    #00b4d8;
+      --stellar: #ffd166;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ────────────────────────────────────────────────────────── */
+    header {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .brand { display: flex; flex-direction: column; gap: 2px; }
+
+    .brand h1 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .brand h1 span.dot {
+      width: 8px; height: 8px;
+      background: var(--eurcv);
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    #updated {
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .stats {
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    .stat { text-align: right; }
+    .stat .label {
+      font-size: 0.68rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .stat .value {
+      font-size: 1rem;
+      font-weight: 600;
+    }
+    .stat.eurcv .value { color: var(--eurcv); }
+    .stat.usdcv .value { color: var(--usdcv); }
+
+    /* ── Grid ──────────────────────────────────────────────────────────── */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+      padding: 1rem;
+    }
+
+    @media (max-width: 860px) {
+      .grid { grid-template-columns: 1fr; }
+      .stat { text-align: left; }
+    }
+
+    /* ── Card ──────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.1rem 1.1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+
+    .card-header h2 {
+      font-size: 0.88rem;
+      font-weight: 600;
+    }
+
+    .card-header p {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* ── Toggle ────────────────────────────────────────────────────────── */
+    .toggle {
+      display: flex;
+      flex-shrink: 0;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .toggle button {
+      padding: 4px 13px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.76rem;
+      font-weight: 500;
+      transition: background 0.12s, color 0.12s;
+    }
+
+    .toggle button.active {
+      background: var(--border);
+      color: var(--text);
+    }
+
+    .toggle button:hover:not(.active) {
+      background: #21262d;
+      color: var(--text);
+    }
+
+    /* ── Chart wrapper ─────────────────────────────────────────────────── */
+    .chart-wrap {
+      position: relative;
+      height: 230px;
+    }
+
+    /* ── No-data message ───────────────────────────────────────────────── */
+    .no-data-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 60vh;
+      gap: 0.75rem;
+      color: var(--muted);
+      text-align: center;
+      padding: 2rem;
+    }
+
+    .no-data-screen code {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 0.4em 0.8em;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1><span class="dot"></span> SG Forge · Stablecoin Dashboard</h1>
+    <div id="updated">Loading…</div>
+  </div>
+  <div class="stats">
+    <div class="stat eurcv">
+      <div class="label">EURCV Supply</div>
+      <div class="value" id="stat-eurcv">—</div>
+    </div>
+    <div class="stat usdcv">
+      <div class="label">USDCV Supply</div>
+      <div class="value" id="stat-usdcv">—</div>
+    </div>
+    <div class="stat">
+      <div class="label">Total</div>
+      <div class="value" id="stat-total">—</div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="grid" id="grid">
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h2>Market Cap</h2>
+          <p>EURCV vs USDCV total supply</p>
+        </div>
+        <div class="toggle">
+          <button class="active" onclick="setView('mcap','line',this)">Line</button>
+          <button onclick="setView('mcap','pie',this)">Pie</button>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="chart-mcap"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h2>Market Cap by Chain</h2>
+          <p>Combined EURCV + USDCV per blockchain</p>
+        </div>
+        <div class="toggle">
+          <button class="active" onclick="setView('mcap-chain','line',this)">Line</button>
+          <button onclick="setView('mcap-chain','pie',this)">Pie</button>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="chart-mcap-chain"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h2>Holders</h2>
+          <p>EURCV vs USDCV wallet / trustline count</p>
+        </div>
+        <div class="toggle">
+          <button class="active" onclick="setView('holders','line',this)">Line</button>
+          <button onclick="setView('holders','pie',this)">Pie</button>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="chart-holders"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h2>Holders by Chain</h2>
+          <p>Combined EURCV + USDCV per blockchain</p>
+        </div>
+        <div class="toggle">
+          <button class="active" onclick="setView('holders-chain','line',this)">Line</button>
+          <button onclick="setView('holders-chain','pie',this)">Pie</button>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="chart-holders-chain"></canvas></div>
+    </div>
+
+  </div>
+</main>
+
+<!-- data.js is generated by: node fetchData.js -->
+<script src="data.js"></script>
+<script>
+'use strict';
+
+// ── Colors ────────────────────────────────────────────────────────────────────
+const C = {
+  EURCV:    '#4f8ef7',
+  USDCV:    '#3dd68c',
+  Ethereum: '#8c8dfe',
+  Solana:   '#f7768e',
+  XRPL:     '#00b4d8',
+  Stellar:  '#ffd166',
+};
+
+function alpha(hex, a) {
+  return hex + Math.round(a * 255).toString(16).padStart(2, '0');
+}
+
+// ── Formatters ────────────────────────────────────────────────────────────────
+function fmtSupply(n) {
+  if (!n && n !== 0) return '0';
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return n.toLocaleString();
+}
+
+function fmtHolders(n) {
+  if (!n && n !== 0) return '0';
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return Math.round(n).toLocaleString();
+}
+
+// ── Chart.js option factories ─────────────────────────────────────────────────
+function lineOptions(fmtFn) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: {
+        labels: { color: '#8b949e', boxWidth: 10, padding: 12, font: { size: 11 } },
+      },
+      tooltip: {
+        callbacks: {
+          label: ctx => `  ${ctx.dataset.label}: ${fmtFn(ctx.raw)}`,
+        },
+      },
+    },
+    scales: {
+      x: {
+        ticks: { color: '#8b949e', font: { size: 10 } },
+        grid:  { color: '#21262d' },
+      },
+      y: {
+        ticks: { color: '#8b949e', font: { size: 10 }, callback: v => fmtFn(v) },
+        grid:  { color: '#21262d' },
+      },
+    },
+  };
+}
+
+function pieOptions(fmtFn) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'right',
+        labels: { color: '#8b949e', boxWidth: 10, padding: 10, font: { size: 11 } },
+      },
+      tooltip: {
+        callbacks: {
+          label: ctx => {
+            const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+            const pct   = total > 0 ? ((ctx.raw / total) * 100).toFixed(1) : 0;
+            return `  ${ctx.label}: ${fmtFn(ctx.raw)} (${pct}%)`;
+          },
+        },
+      },
+    },
+  };
+}
+
+// ── Data builders ─────────────────────────────────────────────────────────────
+function buildTokenLine(snapshots, field) {
+  return {
+    labels: snapshots.map(s => s.date),
+    datasets: ['EURCV', 'USDCV'].map(token => ({
+      label:           token,
+      data:            snapshots.map(s => s.tokens[token]?.[field] ?? 0),
+      borderColor:     C[token],
+      backgroundColor: alpha(C[token], 0.1),
+      fill:            true,
+      tension:         0.35,
+      pointRadius:     3,
+      pointHoverRadius: 5,
+    })),
+  };
+}
+
+function buildTokenPie(latest, field) {
+  return {
+    labels: ['EURCV', 'USDCV'],
+    datasets: [{
+      data:            ['EURCV', 'USDCV'].map(t => latest.tokens[t]?.[field] ?? 0),
+      backgroundColor: [C.EURCV, C.USDCV],
+      borderColor:     '#0d1117',
+      borderWidth:     2,
+    }],
+  };
+}
+
+function getChains(snapshots) {
+  const set = new Set();
+  snapshots.forEach(s =>
+    Object.values(s.tokens).forEach(t =>
+      Object.keys(t.byChain ?? {}).forEach(c => set.add(c))
+    )
+  );
+  // Stable order
+  return ['Ethereum', 'Solana', 'XRPL', 'Stellar'].filter(c => set.has(c));
+}
+
+function buildChainLine(snapshots, field) {
+  const chains = getChains(snapshots);
+  return {
+    labels: snapshots.map(s => s.date),
+    datasets: chains.map(chain => ({
+      label:           chain,
+      data:            snapshots.map(s => {
+        let sum = 0;
+        Object.values(s.tokens).forEach(t => { sum += t.byChain?.[chain]?.[field] ?? 0; });
+        return sum;
+      }),
+      borderColor:     C[chain] ?? '#888',
+      backgroundColor: alpha(C[chain] ?? '#888', 0.08),
+      fill:            false,
+      tension:         0.35,
+      pointRadius:     3,
+      pointHoverRadius: 5,
+    })),
+  };
+}
+
+function buildChainPie(latest, field) {
+  const chains = getChains([latest]);
+  return {
+    labels: chains,
+    datasets: [{
+      data: chains.map(chain => {
+        let sum = 0;
+        Object.values(latest.tokens).forEach(t => { sum += t.byChain?.[chain]?.[field] ?? 0; });
+        return sum;
+      }),
+      backgroundColor: chains.map(c => C[c] ?? '#888'),
+      borderColor:     '#0d1117',
+      borderWidth:     2,
+    }],
+  };
+}
+
+// ── Render engine ─────────────────────────────────────────────────────────────
+const instances = {};
+
+function renderChart(id, data, type, fmtFn) {
+  if (instances[id]) { instances[id].destroy(); }
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  instances[id] = new Chart(ctx.getContext('2d'), {
+    type,
+    data,
+    options: type === 'line' ? lineOptions(fmtFn) : pieOptions(fmtFn),
+  });
+}
+
+// ── View state ────────────────────────────────────────────────────────────────
+const views = {
+  'mcap':          'line',
+  'mcap-chain':    'line',
+  'holders':       'line',
+  'holders-chain': 'line',
+};
+
+let _snapshots, _latest;
+
+function renderAll() {
+  const s = _snapshots, l = _latest;
+
+  renderChart('chart-mcap',
+    views.mcap === 'line' ? buildTokenLine(s, 'marketcap') : buildTokenPie(l, 'marketcap'),
+    views.mcap, fmtSupply
+  );
+
+  renderChart('chart-mcap-chain',
+    views['mcap-chain'] === 'line' ? buildChainLine(s, 'marketcap') : buildChainPie(l, 'marketcap'),
+    views['mcap-chain'], fmtSupply
+  );
+
+  renderChart('chart-holders',
+    views.holders === 'line' ? buildTokenLine(s, 'holders') : buildTokenPie(l, 'holders'),
+    views.holders, fmtHolders
+  );
+
+  renderChart('chart-holders-chain',
+    views['holders-chain'] === 'line' ? buildChainLine(s, 'holders') : buildChainPie(l, 'holders'),
+    views['holders-chain'], fmtHolders
+  );
+}
+
+// ── Toggle handler (called from inline onclick) ───────────────────────────────
+function setView(key, view, btn) {
+  btn.closest('.toggle').querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  views[key] = view;
+  renderAll();
+}
+
+// ── Header stats ──────────────────────────────────────────────────────────────
+function updateHeader(latest) {
+  const eurcv = latest.tokens.EURCV?.marketcap ?? 0;
+  const usdcv = latest.tokens.USDCV?.marketcap ?? 0;
+  document.getElementById('stat-eurcv').textContent  = fmtSupply(eurcv);
+  document.getElementById('stat-usdcv').textContent  = fmtSupply(usdcv);
+  document.getElementById('stat-total').textContent  = fmtSupply(eurcv + usdcv);
+  document.getElementById('updated').textContent = `Last snapshot: ${latest.date}`;
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+function init() {
+  if (!window.STABLECOIN_DATA || !window.STABLECOIN_DATA.snapshots?.length) {
+    document.getElementById('grid').innerHTML = `
+      <div class="no-data-screen" style="grid-column:1/-1">
+        <p style="font-size:1.1rem;font-weight:600;color:var(--text)">No data found</p>
+        <p>Run the fetch script first, then reload this page.</p>
+        <code>node fetchData.js</code>
+      </div>`;
+    return;
+  }
+
+  _snapshots = window.STABLECOIN_DATA.snapshots;
+  _latest    = _snapshots[_snapshots.length - 1];
+
+  updateHeader(_latest);
+  renderAll();
+}
+
+// Wait for data.js to finish loading before init
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

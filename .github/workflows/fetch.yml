@@ -1,0 +1,34 @@
+name: Fetch Stablecoin Data
+
+on:
+  schedule:
+    - cron: '0 8 * * *'   # Tous les jours à 8h UTC
+  workflow_dispatch:        # Déclenchement manuel possible
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Fetch stablecoin data
+        env:
+          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+        run: node fetchData.js
+
+      - name: Commit & push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data.json data.js
+          git diff --staged --quiet || git commit -m "data: update $(date -u +%Y-%m-%d)"
+          git push
