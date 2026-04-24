@@ -6,6 +6,7 @@
  *
  * Environment variables (optional but recommended):
  *   ETHERSCAN_API_KEY  — free at https://etherscan.io/apis
+ *   SOLSCAN_API_KEY    — pro-api.solscan.io (holders Solana)
  *
  * Usage: node fetchData.js
  */
@@ -23,6 +24,7 @@ if (nodeMajor < 18) {
 
 // ── Config ─────────────────────────────────────────────────────────────────
 const ETHERSCAN_KEY = process.env.ETHERSCAN_API_KEY || '';
+const SOLSCAN_KEY   = process.env.SOLSCAN_API_KEY   || '';
 const DATA_JSON     = './data.json';
 const DATA_JS       = './data.js';   // consumed by index.html via <script>
 
@@ -106,16 +108,24 @@ async function fetchSolana({ mint }) {
   const v = rpc.result?.value ?? {};
   const marketcap = v.uiAmount ?? (Number(v.amount ?? 0) / 10 ** (v.decimals ?? 0));
 
-  // Holders — Solscan public API (best-effort; may need API key for high volume)
+  // Holders — Solscan Pro (si clé dispo) sinon public API
   let holders = 0;
   try {
-    const h = await fetch(
-      `https://public-api.solscan.io/token/holders?tokenAddress=${mint}&limit=1&offset=0`,
-      { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(8000) },
-    ).then(r => r.json());
-    holders = Number(h.total ?? 0);
+    if (SOLSCAN_KEY) {
+      const h = await fetch(
+        `https://pro-api.solscan.io/v2.0/token/holders?address=${mint}&page=1&page_size=1`,
+        { headers: { accept: 'application/json', token: SOLSCAN_KEY }, signal: T(12000) },
+      ).then(r => r.json());
+      holders = Number(h.data?.total ?? 0);
+    } else {
+      const h = await fetch(
+        `https://public-api.solscan.io/token/holders?tokenAddress=${mint}&limit=1&offset=0`,
+        { headers: { accept: 'application/json' }, signal: T(8000) },
+      ).then(r => r.json());
+      holders = Number(h.total ?? 0);
+    }
   } catch {
-    console.warn(`    [Solana] holder count unavailable — use SOLSCAN_API_KEY for full data`);
+    console.warn(`    [Solana] holder count unavailable`);
   }
 
   return { marketcap, holders };

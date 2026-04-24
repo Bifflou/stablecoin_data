@@ -23,6 +23,7 @@ jobs:
       - name: Fetch stablecoin data
         env:
           ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+          SOLSCAN_API_KEY:   ${{ secrets.SOLSCAN_API_KEY }}
         run: node fetchData.js
 
       - name: Commit & push
