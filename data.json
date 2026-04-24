@@ -3167,16 +3167,16 @@
       "date": "2026-04-24",
       "tokens": {
         "EURCV": {
-          "marketcap": 19977180,
+          "marketcap": 64046087410019980000,
           "holders": 1,
           "byChain": {
             "Ethereum": {
-              "marketcap": 0,
+              "marketcap": 64046087410000000000,
               "holders": 0
             },
             "Solana": {
               "marketcap": 9977180,
-              "holders": null
+              "holders": 0
             },
             "XRPL": {
               "marketcap": 10000000,
@@ -3189,16 +3189,16 @@
           }
         },
         "USDCV": {
-          "marketcap": 1989380,
+          "marketcap": 18177796000001989000,
           "holders": 0,
           "byChain": {
             "Ethereum": {
-              "marketcap": 0,
+              "marketcap": 18177796000000000000,
               "holders": 0
             },
             "Solana": {
               "marketcap": 1989380,
-              "holders": null
+              "holders": 0
             }
           }
         }
