@@ -63,14 +63,15 @@ const TOKENS = {
 
 // ── Fetchers ───────────────────────────────────────────────────────────────
 
-async function fetchEVM({ address, decimals }) {
-  const base = 'https://api.etherscan.io/api';
-  const key  = ETHERSCAN_KEY;
+// Etherscan V2 API (non-deprecated)
+const ETH_BASE = `https://api.etherscan.io/v2/api?chainid=1&apikey=${ETHERSCAN_KEY}&`;
+const T = ms => AbortSignal.timeout(ms);
 
+async function fetchEVM({ address, decimals }) {
   const [supplyRes, infoRes] = await Promise.all([
-    fetch(`${base}?module=stats&action=tokensupply&contractaddress=${address}&apikey=${key}`)
+    fetch(`${ETH_BASE}module=stats&action=tokensupply&contractaddress=${address}`, { signal: T(12000) })
       .then(r => r.json()),
-    fetch(`${base}?module=token&action=tokeninfo&contractaddress=${address}&apikey=${key}`)
+    fetch(`${ETH_BASE}module=token&action=tokeninfo&contractaddress=${address}`, { signal: T(12000) })
       .then(r => r.json()),
   ]);
 
@@ -88,6 +89,7 @@ async function fetchSolana({ mint }) {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getTokenSupply', params: [mint] }),
+    signal:  T(12000),
   }).then(r => r.json());
 
   const v = rpc.result?.value ?? {};
@@ -114,6 +116,7 @@ async function fetchXRPL({ currency, issuer }) {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(body),
+      signal:  T(12000),
     }).then(r => r.json());
 
   // Total supply via gateway_balances (obligations = total outstanding IOUs)
@@ -147,6 +150,7 @@ async function fetchXRPL({ currency, issuer }) {
 async function fetchStellar({ code, issuer }) {
   const res = await fetch(
     `https://horizon.stellar.org/assets?asset_code=${code}&asset_issuer=${issuer}`,
+    { signal: T(12000) },
   ).then(r => r.json());
 
   const rec = res._embedded?.records?.[0] ?? {};
