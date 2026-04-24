@@ -2,19 +2,18 @@
 /**
  * SG Forge · Historical Backfill
  *
- * Fetches weekly supply data since each token's creation date.
- * Run ONCE, then use fetchData.js for daily updates.
+ * Run ONCE to populate historical data, then use fetchData.js for daily updates.
  *
  * Requirements : Node.js 18+, ETHERSCAN_API_KEY env variable
  * Usage        : ETHERSCAN_API_KEY=xxx node backfill.js
  *
- * What it fetches historically:
- *   Ethereum → full weekly supply via Etherscan (archive-free)
- *   Stellar  → creation date + current data
- *   XRPL     → estimated weekly supply via ledger index
- *   Solana   → current data only (no free historical RPC)
+ * Ethereum  → reconstructs daily supply from mint/burn Transfer events (0x0)
+ *             Works on free tier — no archive node needed
+ * XRPL      → estimated daily supply via ledger index (last 2 years)
+ * Stellar   → current snapshot only (no free historical API)
+ * Solana    → current snapshot only (no free historical RPC)
  *
- * Estimated runtime: 3–8 min (rate-limited to 4 req/s on Etherscan free tier)
+ * Estimated runtime: 2–5 min
  */
 
 'use strict';
@@ -65,49 +64,6 @@ function fmt(n) {
   return String(Math.round(n));
 }
 
-// ── Etherscan ─────────────────────────────────────────────────────────────────
-const ETH_BASE = 'https://api.etherscan.io/v2/api';
-
-async function etherscan(params, retries = 3) {
-  await sleep(250); // 4 req/s — safe for free tier
-  const url = `${ETH_BASE}?chainid=1&apikey=${ETHERSCAN_KEY}&${new URLSearchParams(params)}`;
-  for (let i = 0; i < retries; i++) {
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(15000) }).then(r => r.json());
-      if (res.status === '0' && res.message !== 'No transactions found') {
-        if (res.result?.includes('rate limit')) { await sleep(1000); continue; }
-        throw new Error(res.result || res.message);
-      }
-      return res.result;
-    } catch (err) {
-      if (i === retries - 1) throw err;
-      await sleep(1000 * (i + 1));
-    }
-  }
-}
-
-async function getContractCreationTs(address) {
-  // Step 1: get creation tx hash
-  const info = await etherscan({ module: 'contract', action: 'getcontractcreation', contractaddresses: address });
-  const txHash = Array.isArray(info) ? info[0]?.txHash : info?.txHash;
-  if (!txHash) throw new Error('No creation tx found');
-
-  // Step 2: get block number from tx
-  const tx       = await etherscan({ module: 'proxy', action: 'eth_getTransactionByHash', txhash: txHash });
-  const blockHex = tx?.blockNumber;
-  if (!blockHex) throw new Error('No block in tx');
-
-  // Step 3: get block timestamp
-  const blockno  = parseInt(blockHex, 16);
-  const reward   = await etherscan({ module: 'block', action: 'getblockreward', blockno });
-  return { blockno, ts: Number(reward.timeStamp), date: tsDate(Number(reward.timeStamp)) };
-}
-
-async function getBlockAtTs(timestamp) {
-  const result = await etherscan({ module: 'block', action: 'getblocknobytime', timestamp, closest: 'before' });
-  return Number(result);
-}
-
 function parseSupply(raw, decimals) {
   try {
     const r = BigInt(raw);
@@ -118,287 +74,274 @@ function parseSupply(raw, decimals) {
   }
 }
 
-async function getEthSupplyAtBlock(address, decimals, blockno) {
-  const raw = await etherscan({ module: 'stats', action: 'tokensupply', contractaddress: address, blockno });
-  return parseSupply(raw, decimals);
+function upsert(store, date, tokenName, chainName, marketcap, holders = null) {
+  if (!store[date]) store[date] = { date, tokens: {} };
+  if (!store[date].tokens[tokenName]) {
+    store[date].tokens[tokenName] = { marketcap: 0, holders: null, byChain: {} };
+  }
+  store[date].tokens[tokenName].byChain[chainName] = { marketcap, holders };
+  store[date].tokens[tokenName].marketcap = Object.values(store[date].tokens[tokenName].byChain)
+    .reduce((sum, c) => sum + (c.marketcap ?? 0), 0);
 }
 
-// ── XRPL ──────────────────────────────────────────────────────────────────────
-// XRPL: ~1 ledger per 3.5 seconds
-// We estimate historical ledger index from current ledger + time delta
+// ── Etherscan ─────────────────────────────────────────────────────────────────
+const ETH_BASE  = 'https://api.etherscan.io/v2/api';
+const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
+
+async function etherscan(params, retries = 3) {
+  await sleep(250); // 4 req/s — safe for free tier
+  const url = `${ETH_BASE}?chainid=1&apikey=${ETHERSCAN_KEY}&${new URLSearchParams(params)}`;
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(15000) }).then(r => r.json());
+      if (res.status === '0' && res.message !== 'No transactions found') {
+        if (res.result?.includes?.('rate limit')) { await sleep(1500); continue; }
+        throw new Error(res.result || res.message);
+      }
+      return res.result;
+    } catch (err) {
+      if (i === retries - 1) throw err;
+      await sleep(1000 * (i + 1));
+    }
+  }
+}
+
+/**
+ * Fetch all ERC-20 Transfer events to/from the zero address (mints & burns).
+ * Paginates automatically. Free tier: up to 10 000 results per page.
+ */
+async function fetchMintBurnEvents(contractAddress) {
+  const events = [];
+  let page = 1;
+  while (true) {
+    const result = await etherscan({
+      module:          'account',
+      action:          'tokentx',
+      contractaddress: contractAddress,
+      address:         ZERO_ADDR,
+      sort:            'asc',
+      page,
+      offset:          10000,
+    });
+    if (!Array.isArray(result) || result.length === 0) break;
+    events.push(...result);
+    process.stdout.write(`    page ${page}: ${result.length} events\n`);
+    if (result.length < 10000) break;
+    page++;
+  }
+  return events;
+}
+
+// ── Ethereum backfill ─────────────────────────────────────────────────────────
+async function backfillEthereum(store) {
+  console.log('\n══ Ethereum (mint/burn reconstruction) ══════════════');
+
+  for (const [tokenName, chains] of Object.entries(TOKENS)) {
+    const cfg = chains.Ethereum;
+    if (!cfg) continue;
+
+    console.log(`\n[${tokenName}] Fetching Transfer events from/to 0x0...`);
+
+    let events;
+    try {
+      events = await fetchMintBurnEvents(cfg.address);
+    } catch (err) {
+      console.log(`  FAILED: ${err.message}`);
+      continue;
+    }
+
+    if (!events.length) {
+      console.log('  No mint/burn events found — skipping');
+      continue;
+    }
+
+    // Sort ascending by timestamp (should already be sorted)
+    events.sort((a, b) => Number(a.timeStamp) - Number(b.timeStamp));
+
+    const firstTs    = Number(events[0].timeStamp);
+    const timestamps = dailyTimestamps(firstTs, nowTs());
+    console.log(`  ${events.length} events → rebuilding ${timestamps.length} daily snapshots from ${tsDate(firstTs)}`);
+
+    let supply = BigInt(0);
+    let evtIdx = 0;
+    let logged = 0;
+
+    for (const ts of timestamps) {
+      const dayEnd = ts + DAY - 1;
+
+      // Consume all events up to end of this day
+      while (evtIdx < events.length && Number(events[evtIdx].timeStamp) <= dayEnd) {
+        const evt = events[evtIdx];
+        const val = BigInt(evt.value);
+        if (evt.from.toLowerCase() === ZERO_ADDR) supply += val; // mint
+        else if (evt.to.toLowerCase() === ZERO_ADDR) supply -= val; // burn
+        evtIdx++;
+      }
+
+      const date      = tsDate(ts);
+      const marketcap = parseSupply(supply.toString(), cfg.decimals);
+      upsert(store, date, tokenName, 'Ethereum', marketcap);
+
+      // Print one line every ~60 days
+      if (logged % 60 === 0) process.stdout.write(`  ${date}: ${fmt(marketcap)}\n`);
+      logged++;
+    }
+    console.log(`  ✓ done`);
+  }
+}
+
+// ── XRPL ─────────────────────────────────────────────────────────────────────
 const XRPL_SECONDS_PER_LEDGER = 3.5;
 
 async function xrplPost(body) {
   await sleep(300);
   return fetch('https://xrplcluster.com/', {
-    method: 'POST',
+    method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(15000),
+    body:    JSON.stringify(body),
+    signal:  AbortSignal.timeout(15000),
   }).then(r => r.json());
-}
-
-async function getXrplCurrentLedger() {
-  const res = await xrplPost({ method: 'ledger', params: [{ ledger_index: 'validated' }] });
-  return {
-    index: res.result.ledger_index,
-    ts:    res.result.ledger?.close_time
-      ? res.result.ledger.close_time + 946684800  // XRPL epoch offset to Unix
-      : nowTs(),
-  };
-}
-
-async function getXrplSupplyAtLedger(currency, issuer, ledgerIndex) {
-  const res = await xrplPost({
-    method: 'gateway_balances',
-    params: [{ account: issuer, ledger_index: ledgerIndex }],
-  });
-  if (res.result?.error) return null;
-  const obligations = res.result?.obligations ?? {};
-  return parseFloat(obligations[currency] ?? 0);
-}
-
-// ── Stellar ───────────────────────────────────────────────────────────────────
-async function getStellarAsset(code, issuer) {
-  const res = await fetch(
-    `https://horizon.stellar.org/assets?asset_code=${code}&asset_issuer=${issuer}`,
-    { signal: AbortSignal.timeout(10000) }
-  ).then(r => r.json());
-  const rec = res._embedded?.records?.[0] ?? null;
-  if (!rec) return null;
-  // Normalize fields: Horizon uses balances.authorized + accounts.authorized
-  return {
-    ...rec,
-    amount:       rec.balances?.authorized ?? '0',
-    num_accounts: rec.accounts?.authorized ?? 0,
-  };
-}
-
-async function getStellarCreationTs(issuer) {
-  // Get the oldest operation on the issuer account
-  const res = await fetch(
-    `https://horizon.stellar.org/accounts/${issuer}/operations?order=asc&limit=1`,
-    { signal: AbortSignal.timeout(10000) }
-  ).then(r => r.json());
-  const first = res._embedded?.records?.[0];
-  if (!first?.created_at) return null;
-  return Math.floor(new Date(first.created_at).getTime() / 1000);
-}
-
-// ── Solana ────────────────────────────────────────────────────────────────────
-async function getSolanaSupply(mint) {
-  const res = await fetch('https://api.mainnet-beta.solana.com', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getTokenSupply', params: [mint] }),
-    signal: AbortSignal.timeout(10000),
-  }).then(r => r.json());
-  const v = res.result?.value ?? {};
-  return v.uiAmount ?? (Number(v.amount ?? 0) / 10 ** (v.decimals ?? 0));
-}
-
-// ── Main backfill logic ───────────────────────────────────────────────────────
-
-async function backfillEthereum(store) {
-  console.log('\n══ Ethereum ══════════════════════════════');
-
-  for (const [tokenName, chains] of Object.entries(TOKENS)) {
-    const ethCfg = chains.Ethereum;
-    if (!ethCfg) continue;
-
-    process.stdout.write(`\n[${tokenName}] Finding creation date... `);
-    let creationTs;
-    try {
-      const info = await getContractCreationTs(ethCfg.address);
-      creationTs = info.ts;
-      console.log(`deployed ${info.date} (block ${info.blockno})`);
-    } catch (err) {
-      console.log(`FAILED — ${err.message}`);
-      continue;
-    }
-
-    const timestamps = dailyTimestamps(creationTs, nowTs());
-    console.log(`  Building ${timestamps.length} weekly snapshots...`);
-
-    let done = 0;
-    for (const ts of timestamps) {
-      const date = tsDate(ts);
-      process.stdout.write(`  ${date} `);
-
-      try {
-        const blockno   = await getBlockAtTs(ts);
-        const marketcap = await getEthSupplyAtBlock(ethCfg.address, ethCfg.decimals, blockno);
-
-        // Upsert into store
-        let snap = store[date];
-        if (!snap) {
-          snap = { date, tokens: {} };
-          store[date] = snap;
-        }
-        if (!snap.tokens[tokenName]) {
-          snap.tokens[tokenName] = { marketcap: 0, holders: null, byChain: {} };
-        }
-        // Set Ethereum chain data
-        snap.tokens[tokenName].byChain.Ethereum = { marketcap, holders: null };
-        // Recalculate total from all chains
-        snap.tokens[tokenName].marketcap = Object.values(snap.tokens[tokenName].byChain)
-          .reduce((sum, c) => sum + (c.marketcap ?? 0), 0);
-
-        process.stdout.write(`${fmt(marketcap)} ✓\n`);
-      } catch (err) {
-        process.stdout.write(`ERROR: ${err.message}\n`);
-      }
-
-      done++;
-      if (done % 10 === 0) console.log(`  ... ${done}/${timestamps.length} done`);
-    }
-  }
 }
 
 async function backfillXRPL(store) {
-  console.log('\n══ XRPL ══════════════════════════════════');
-  const eurcvXrpl = TOKENS.EURCV.XRPL;
+  console.log('\n══ XRPL (estimated ledger index) ════════════════════');
+  const { currency, issuer } = TOKENS.EURCV.XRPL;
 
   process.stdout.write('Getting current ledger... ');
   let currentLedger;
   try {
-    currentLedger = await getXrplCurrentLedger();
+    const res = await xrplPost({ method: 'ledger', params: [{ ledger_index: 'validated' }] });
+    currentLedger = {
+      index: res.result.ledger_index,
+      ts:    res.result.ledger?.close_time
+        ? res.result.ledger.close_time + 946684800
+        : nowTs(),
+    };
     console.log(`ledger ${currentLedger.index} at ${tsDate(currentLedger.ts)}`);
   } catch (err) {
     console.log(`FAILED — ${err.message}`);
     return;
   }
 
-  // Go back 2 years weekly
-  const startTs  = nowTs() - 2 * 365 * 24 * 3600;
+  // EURCV appeared on XRPL around mid-2025 — go back 2 years to be safe
+  const startTs    = nowTs() - 2 * 365 * DAY;
   const timestamps = dailyTimestamps(startTs, nowTs());
+  console.log(`  Building ${timestamps.length} daily XRPL snapshots...`);
 
-  console.log(`  Building ${timestamps.length} weekly XRPL snapshots...`);
-
+  let lastNonZero = 0;
   for (const ts of timestamps) {
-    const date = tsDate(ts);
-    // Estimate ledger index for this timestamp
-    const deltaSeconds = currentLedger.ts - ts;
-    const estimatedLedger = Math.max(1,
-      Math.round(currentLedger.index - deltaSeconds / XRPL_SECONDS_PER_LEDGER)
-    );
-
-    process.stdout.write(`  ${date} (ledger ~${estimatedLedger}) `);
+    const date          = tsDate(ts);
+    const deltaSeconds  = currentLedger.ts - ts;
+    const ledgerIndex   = Math.max(1, Math.round(currentLedger.index - deltaSeconds / XRPL_SECONDS_PER_LEDGER));
 
     try {
-      const supply = await getXrplSupplyAtLedger(eurcvXrpl.currency, eurcvXrpl.issuer, estimatedLedger);
-      if (supply === null) { process.stdout.write('no data\n'); continue; }
+      const res  = await xrplPost({ method: 'gateway_balances', params: [{ account: issuer, ledger_index: ledgerIndex }] });
+      if (res.result?.error) { process.stdout.write('.'); continue; }
 
-      let snap = store[date];
-      if (!snap) { snap = { date, tokens: {} }; store[date] = snap; }
-      if (!snap.tokens.EURCV) snap.tokens.EURCV = { marketcap: 0, holders: null, byChain: {} };
-
-      snap.tokens.EURCV.byChain.XRPL = { marketcap: supply, holders: null };
-      snap.tokens.EURCV.marketcap = Object.values(snap.tokens.EURCV.byChain)
-        .reduce((sum, c) => sum + (c.marketcap ?? 0), 0);
-
-      process.stdout.write(`${fmt(supply)} ✓\n`);
+      const supply = parseFloat(res.result?.obligations?.[currency] ?? 0);
+      if (supply > 0 || lastNonZero > 0) {
+        // Only start recording once we first see a non-zero supply
+        upsert(store, date, 'EURCV', 'XRPL', supply);
+        if (supply > 0) lastNonZero = supply;
+        process.stdout.write(`  ${date}: ${fmt(supply)}\n`);
+      } else {
+        process.stdout.write('.');
+      }
     } catch (err) {
-      process.stdout.write(`ERROR: ${err.message}\n`);
+      process.stdout.write(`  ${date}: ERROR ${err.message}\n`);
     }
   }
+  console.log('\n  ✓ done');
 }
 
+// ── Stellar ───────────────────────────────────────────────────────────────────
 async function backfillStellar(store) {
-  console.log('\n══ Stellar ═══════════════════════════════');
-  const cfg = TOKENS.EURCV.Stellar;
+  console.log('\n══ Stellar (current snapshot) ═══════════════════════');
+  const { code, issuer } = TOKENS.EURCV.Stellar;
 
-  process.stdout.write('Getting Stellar asset info... ');
   try {
-    const asset = await getStellarAsset(cfg.code, cfg.issuer);
-    if (!asset) { console.log('not found'); return; }
+    const res = await fetch(
+      `https://horizon.stellar.org/assets?asset_code=${code}&asset_issuer=${issuer}`,
+      { signal: AbortSignal.timeout(12000) }
+    ).then(r => r.json());
 
-    const supply  = parseFloat(asset.amount ?? 0);
-    const holders = Number(asset.num_accounts ?? 0);
-    console.log(`supply=${fmt(supply)}, holders=${holders}`);
+    const rec  = res._embedded?.records?.[0];
+    if (!rec) { console.log('  Not found'); return; }
 
-    // Try to find creation date
-    process.stdout.write('Finding creation date... ');
-    const creationTs = await getStellarCreationTs(cfg.issuer);
-    if (creationTs) {
-      console.log(tsDate(creationTs));
-      // Add current data to today
-      const today = tsDate(nowTs());
-      if (!store[today]) store[today] = { date: today, tokens: {} };
-      if (!store[today].tokens.EURCV) store[today].tokens.EURCV = { marketcap: 0, holders: null, byChain: {} };
-      store[today].tokens.EURCV.byChain.Stellar = { marketcap: supply, holders };
-      store[today].tokens.EURCV.marketcap = Object.values(store[today].tokens.EURCV.byChain)
-        .reduce((sum, c) => sum + (c.marketcap ?? 0), 0);
-      store[today].tokens.EURCV.holders = (store[today].tokens.EURCV.holders ?? 0) + holders;
-    } else {
-      console.log('not found');
-    }
+    const supply  = parseFloat(rec.balances?.authorized ?? 0);
+    const holders = Number(rec.accounts?.authorized ?? 0);
+    console.log(`  supply=${fmt(supply)}, holders=${holders}`);
+
+    const today = tsDate(nowTs());
+    upsert(store, today, 'EURCV', 'Stellar', supply, holders);
+    store[today].tokens.EURCV.holders = (store[today].tokens.EURCV.holders ?? 0) + holders;
+    console.log('  ✓ done');
   } catch (err) {
-    console.log(`FAILED — ${err.message}`);
+    console.log(`  FAILED: ${err.message}`);
   }
 }
 
+// ── Solana ────────────────────────────────────────────────────────────────────
 async function backfillSolana(store) {
-  console.log('\n══ Solana ════════════════════════════════');
+  console.log('\n══ Solana (current snapshot) ════════════════════════');
   const today = tsDate(nowTs());
 
   for (const [tokenName, chains] of Object.entries(TOKENS)) {
     const cfg = chains.Solana;
     if (!cfg) continue;
 
-    process.stdout.write(`[${tokenName}] current supply... `);
+    process.stdout.write(`  [${tokenName}] supply... `);
     try {
-      const supply = await getSolanaSupply(cfg.mint);
-      console.log(fmt(supply));
+      const res = await fetch('https://api.mainnet-beta.solana.com', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getTokenSupply', params: [cfg.mint] }),
+        signal:  AbortSignal.timeout(10000),
+      }).then(r => r.json());
 
-      if (!store[today]) store[today] = { date: today, tokens: {} };
-      if (!store[today].tokens[tokenName]) {
-        store[today].tokens[tokenName] = { marketcap: 0, holders: null, byChain: {} };
-      }
-      store[today].tokens[tokenName].byChain.Solana = { marketcap: supply, holders: null };
-      store[today].tokens[tokenName].marketcap = Object.values(store[today].tokens[tokenName].byChain)
-        .reduce((sum, c) => sum + (c.marketcap ?? 0), 0);
+      const v      = res.result?.value ?? {};
+      const supply = v.uiAmountString ? parseFloat(v.uiAmountString) : (Number(v.amount ?? 0) / 10 ** (v.decimals ?? 0));
+      console.log(fmt(supply));
+      upsert(store, today, tokenName, 'Solana', supply);
     } catch (err) {
-      console.log(`FAILED — ${err.message}`);
+      console.log(`FAILED: ${err.message}`);
     }
   }
+  console.log('  ✓ done');
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 async function main() {
-  console.log('════════════════════════════════════════');
-  console.log('  SG Forge · Historical Backfill        ');
-  console.log('════════════════════════════════════════');
-  console.log('Ethereum   : full daily history from contract creation');
-  console.log('XRPL       : estimated daily history (last 2 years)');
-  console.log('Stellar    : current snapshot only');
-  console.log('Solana     : current snapshot only (no free archive RPC)');
-  console.log('\nEstimated time: 15–25 minutes\n');
+  console.log('════════════════════════════════════════════════════');
+  console.log('  SG Forge · Historical Backfill                    ');
+  console.log('════════════════════════════════════════════════════');
+  console.log('Ethereum : daily supply rebuilt from mint/burn events');
+  console.log('XRPL     : estimated daily supply (last 2 years)    ');
+  console.log('Stellar  : current snapshot only                    ');
+  console.log('Solana   : current snapshot only                    ');
+  console.log('\nEstimated time: 2–5 minutes\n');
 
-  // Load existing data, indexed by date (we'll rebuild from this)
+  // Load existing snapshots — keep only real ones (have actual holders or recent fresh data)
   const store = {};
   if (fs.existsSync(DATA_JSON)) {
     try {
       const existing = JSON.parse(fs.readFileSync(DATA_JSON, 'utf8'));
-      // Keep only snapshots that have real non-zero holder data (from fetchData.js)
-      // to avoid mixing with fake example data
       for (const snap of existing.snapshots ?? []) {
-        const hasRealData = Object.values(snap.tokens).some(t => t.holders > 0);
-        if (hasRealData) store[snap.date] = snap;
+        // Keep snapshot if it has real holder data from fetchData.js
+        const hasHolders = Object.values(snap.tokens).some(t => t.holders > 0);
+        if (hasHolders) store[snap.date] = snap;
       }
-      if (Object.keys(store).length > 0) {
-        console.log(`Loaded ${Object.keys(store).length} existing real snapshots from data.json\n`);
+      if (Object.keys(store).length) {
+        console.log(`Kept ${Object.keys(store).length} existing real snapshot(s) from data.json\n`);
       }
     } catch { /* start fresh */ }
   }
 
-  // Run backfills
   await backfillEthereum(store);
   await backfillXRPL(store);
   await backfillStellar(store);
   await backfillSolana(store);
 
-  // Save
   const snapshots = Object.values(store)
     .filter(s => Object.keys(s.tokens).length > 0)
     .sort((a, b) => a.date.localeCompare(b.date));
@@ -407,10 +350,9 @@ async function main() {
   fs.writeFileSync(DATA_JSON, JSON.stringify(output, null, 2));
   fs.writeFileSync(DATA_JS,   `window.STABLECOIN_DATA = ${JSON.stringify(output)};`);
 
-  console.log(`\n\n✓ Saved ${snapshots.length} snapshots → data.json + data.js`);
+  console.log(`\n✓ Saved ${snapshots.length} snapshots → data.json + data.js`);
   console.log('\nNext steps:');
   console.log('  git add data.json data.js && git commit -m "data: historical backfill" && git push');
-  console.log('  Then run: node fetchData.js   (for current full snapshot with holders)');
 }
 
 main().catch(err => { console.error('\nFatal:', err.message); process.exit(1); });
