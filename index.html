@@ -204,8 +204,12 @@
       <div class="value" id="stat-usdcv">—</div>
     </div>
     <div class="stat">
-      <div class="label">Total</div>
+      <div class="label">Total <span id="stat-currency-label">€</span></div>
       <div class="value" id="stat-total">—</div>
+    </div>
+    <div class="toggle currency-toggle" style="align-self:center">
+      <button class="active" data-currency="EUR" onclick="setCurrency('EUR')">€ EUR</button>
+      <button data-currency="USD" onclick="setCurrency('USD')">$ USD</button>
     </div>
   </div>
 </header>
@@ -291,13 +295,41 @@ function alpha(hex, a) {
   return hex + Math.round(a * 255).toString(16).padStart(2, '0');
 }
 
+// ── Currency state ────────────────────────────────────────────────────────────
+let currency   = 'EUR'; // 'EUR' | 'USD'
+let eurUsdRate = 1.08;  // mis à jour via Frankfurter API au chargement
+
+// EURCV = stablecoin EUR (1 token ≈ 1 €)
+// USDCV = stablecoin USD (1 token ≈ 1 $)
+function convertMcap(val, tokenName) {
+  if (val == null) return null;
+  if (currency === 'EUR') {
+    return tokenName === 'USDCV' ? val / eurUsdRate : val;  // USD → EUR
+  } else {
+    return tokenName === 'EURCV' ? val * eurUsdRate : val;  // EUR → USD
+  }
+}
+
+async function fetchEurUsdRate() {
+  try {
+    const res = await fetch(
+      'https://api.frankfurter.app/latest?from=EUR&to=USD',
+      { signal: AbortSignal.timeout(5000) }
+    ).then(r => r.json());
+    eurUsdRate = res.rates?.USD ?? 1.08;
+  } catch {
+    console.warn('EUR/USD rate unavailable, using fallback 1.08');
+  }
+}
+
 // ── Formatters ────────────────────────────────────────────────────────────────
-function fmtSupply(n) {
-  if (!n && n !== 0) return '0';
-  if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
-  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
-  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
-  return n.toLocaleString();
+function fmtMcap(n) {
+  if (n == null || isNaN(n)) return '—';
+  const sym = currency === 'EUR' ? '€' : '$';
+  if (Math.abs(n) >= 1e9) return sym + (n / 1e9).toFixed(2) + 'B';
+  if (Math.abs(n) >= 1e6) return sym + (n / 1e6).toFixed(2) + 'M';
+  if (Math.abs(n) >= 1e3) return sym + (n / 1e3).toFixed(1) + 'K';
+  return sym + Math.round(n).toLocaleString();
 }
 
 function fmtHolders(n) {
@@ -362,12 +394,16 @@ function pieOptions(fmtFn) {
 }
 
 // ── Data builders ─────────────────────────────────────────────────────────────
-function buildTokenLine(snapshots, field) {
+// converter(val, tokenName) → valeur convertie (optionnel, pour market cap)
+function buildTokenLine(snapshots, field, converter) {
   return {
     labels: snapshots.map(s => s.date),
     datasets: ['EURCV', 'USDCV'].map(token => ({
       label:           token,
-      data:            snapshots.map(s => s.tokens[token]?.[field] ?? null),
+      data:            snapshots.map(s => {
+        const val = s.tokens[token]?.[field] ?? null;
+        return val == null ? null : (converter ? converter(val, token) : val);
+      }),
       borderColor:     C[token],
       backgroundColor: alpha(C[token], 0.1),
       fill:            true,
@@ -378,11 +414,14 @@ function buildTokenLine(snapshots, field) {
   };
 }
 
-function buildTokenPie(latest, field) {
+function buildTokenPie(latest, field, converter) {
   return {
     labels: ['EURCV', 'USDCV'],
     datasets: [{
-      data:            ['EURCV', 'USDCV'].map(t => latest.tokens[t]?.[field] ?? 0),
+      data:            ['EURCV', 'USDCV'].map(t => {
+        const val = latest.tokens[t]?.[field] ?? 0;
+        return converter ? converter(val, t) : val;
+      }),
       backgroundColor: [C.EURCV, C.USDCV],
       borderColor:     '#0d1117',
       borderWidth:     2,
@@ -401,19 +440,21 @@ function getChains(snapshots) {
   return ['Ethereum', 'Solana', 'XRPL', 'Stellar'].filter(c => set.has(c));
 }
 
-function buildChainLine(snapshots, field) {
+function buildChainLine(snapshots, field, converter) {
   const chains = getChains(snapshots);
   return {
     labels: snapshots.map(s => s.date),
     datasets: chains.map(chain => ({
       label:           chain,
       data:            snapshots.map(s => {
-        // Return null if this chain has no data for this snapshot (shows as gap, not zero)
         let sum = 0, hasData = false;
-        Object.values(s.tokens).forEach(t => {
+        for (const [tokenName, t] of Object.entries(s.tokens)) {
           const val = t.byChain?.[chain]?.[field];
-          if (val != null) { sum += val; hasData = true; }
-        });
+          if (val != null) {
+            sum += converter ? converter(val, tokenName) : val;
+            hasData = true;
+          }
+        }
         return hasData ? sum : null;
       }),
       borderColor:     C[chain] ?? '#888',
@@ -426,14 +467,17 @@ function buildChainLine(snapshots, field) {
   };
 }
 
-function buildChainPie(latest, field) {
+function buildChainPie(latest, field, converter) {
   const chains = getChains([latest]);
   return {
     labels: chains,
     datasets: [{
       data: chains.map(chain => {
         let sum = 0;
-        Object.values(latest.tokens).forEach(t => { sum += t.byChain?.[chain]?.[field] ?? 0; });
+        for (const [tokenName, t] of Object.entries(latest.tokens)) {
+          const val = t.byChain?.[chain]?.[field] ?? 0;
+          sum += converter ? converter(val, tokenName) : val;
+        }
         return sum;
       }),
       backgroundColor: chains.map(c => C[c] ?? '#888'),
@@ -471,13 +515,13 @@ function renderAll() {
   const s = _snapshots, l = _latest;
 
   renderChart('chart-mcap',
-    views.mcap === 'line' ? buildTokenLine(s, 'marketcap') : buildTokenPie(l, 'marketcap'),
-    views.mcap, fmtSupply
+    views.mcap === 'line' ? buildTokenLine(s, 'marketcap', convertMcap) : buildTokenPie(l, 'marketcap', convertMcap),
+    views.mcap, fmtMcap
   );
 
   renderChart('chart-mcap-chain',
-    views['mcap-chain'] === 'line' ? buildChainLine(s, 'marketcap') : buildChainPie(l, 'marketcap'),
-    views['mcap-chain'], fmtSupply
+    views['mcap-chain'] === 'line' ? buildChainLine(s, 'marketcap', convertMcap) : buildChainPie(l, 'marketcap', convertMcap),
+    views['mcap-chain'], fmtMcap
   );
 
   renderChart('chart-holders',
@@ -499,18 +543,32 @@ function setView(key, view, btn) {
   renderAll();
 }
 
+// ── Currency toggle ───────────────────────────────────────────────────────────
+function setCurrency(c) {
+  currency = c;
+  document.querySelectorAll('.currency-toggle button').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.currency === c);
+  });
+  const lbl = document.getElementById('stat-currency-label');
+  if (lbl) lbl.textContent = c === 'EUR' ? '€' : '$';
+  updateHeader(_latest);
+  renderAll();
+}
+
 // ── Header stats ──────────────────────────────────────────────────────────────
 function updateHeader(latest) {
-  const eurcv = latest.tokens.EURCV?.marketcap ?? 0;
-  const usdcv = latest.tokens.USDCV?.marketcap ?? 0;
-  document.getElementById('stat-eurcv').textContent  = fmtSupply(eurcv);
-  document.getElementById('stat-usdcv').textContent  = fmtSupply(usdcv);
-  document.getElementById('stat-total').textContent  = fmtSupply(eurcv + usdcv);
+  const eurcvRaw = latest.tokens.EURCV?.marketcap ?? 0;
+  const usdcvRaw = latest.tokens.USDCV?.marketcap ?? 0;
+  const eurcv = convertMcap(eurcvRaw, 'EURCV');
+  const usdcv = convertMcap(usdcvRaw, 'USDCV');
+  document.getElementById('stat-eurcv').textContent  = fmtMcap(eurcv);
+  document.getElementById('stat-usdcv').textContent  = fmtMcap(usdcv);
+  document.getElementById('stat-total').textContent  = fmtMcap(eurcv + usdcv);
   document.getElementById('updated').textContent = `Last snapshot: ${latest.date}`;
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-function init() {
+async function init() {
   if (!window.STABLECOIN_DATA || !window.STABLECOIN_DATA.snapshots?.length) {
     document.getElementById('grid').innerHTML = `
       <div class="no-data-screen" style="grid-column:1/-1">
@@ -520,6 +578,9 @@ function init() {
       </div>`;
     return;
   }
+
+  // Fetch live EUR/USD rate before rendering so conversions are accurate
+  await fetchEurUsdRate();
 
   _snapshots = window.STABLECOIN_DATA.snapshots;
   _latest    = _snapshots[_snapshots.length - 1];

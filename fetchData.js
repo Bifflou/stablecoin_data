@@ -106,7 +106,10 @@ async function fetchSolana({ mint }) {
   }).then(r => r.json());
 
   const v = rpc.result?.value ?? {};
-  const marketcap = v.uiAmount ?? (Number(v.amount ?? 0) / 10 ** (v.decimals ?? 0));
+  // uiAmountString est plus précis que uiAmount (float) — circulating supply = total minted pour un stablecoin
+  const marketcap = v.uiAmountString
+    ? parseFloat(v.uiAmountString)
+    : parseSupply(v.amount ?? '0', v.decimals ?? 0);
 
   // Holders — Solscan Pro (si clé dispo) sinon public API
   let holders = 0;
