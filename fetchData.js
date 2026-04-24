@@ -31,7 +31,7 @@ const TOKENS = {
     Ethereum: {
       type: 'evm',
       address:  '0x5F7827FDeb7c20b443265Fc2F40845B715385Ff2',
-      decimals: 6,
+      decimals: 18,
     },
     Solana: {
       type: 'solana',
@@ -52,7 +52,7 @@ const TOKENS = {
     Ethereum: {
       type: 'evm',
       address:  '0x5422374B27757da72d5265cC745ea906E0446634',
-      decimals: 6,
+      decimals: 18,
     },
     Solana: {
       type: 'solana',
@@ -67,6 +67,17 @@ const TOKENS = {
 const ETH_BASE = `https://api.etherscan.io/v2/api?chainid=1&apikey=${ETHERSCAN_KEY}&`;
 const T = ms => AbortSignal.timeout(ms);
 
+// BigInt parser — avoids float precision loss on 18-decimal tokens
+function parseSupply(raw, decimals) {
+  try {
+    const r = BigInt(raw);
+    const d = BigInt(10 ** decimals);
+    return Number(r / d) + Number(r % d) / 10 ** decimals;
+  } catch {
+    return Number(raw) / 10 ** decimals;
+  }
+}
+
 async function fetchEVM({ address, decimals }) {
   const [supplyRes, infoRes] = await Promise.all([
     fetch(`${ETH_BASE}module=stats&action=tokensupply&contractaddress=${address}`, { signal: T(12000) })
@@ -77,7 +88,7 @@ async function fetchEVM({ address, decimals }) {
 
   if (supplyRes.status === '0') throw new Error(`Etherscan: ${supplyRes.result}`);
 
-  const marketcap = Number(supplyRes.result) / 10 ** decimals;
+  const marketcap = parseSupply(supplyRes.result, decimals);
   const holders   = Number(infoRes.result?.[0]?.holdersCount ?? 0);
 
   return { marketcap, holders };

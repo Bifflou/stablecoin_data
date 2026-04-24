@@ -36,13 +36,13 @@ const DATA_JS   = './data.js';
 
 const TOKENS = {
   EURCV: {
-    Ethereum: { address: '0x5F7827FDeb7c20b443265Fc2F40845B715385Ff2', decimals: 6 },
+    Ethereum: { address: '0x5F7827FDeb7c20b443265Fc2F40845B715385Ff2', decimals: 18 },
     Solana:   { mint: 'DghpMkatCiUsofbTmid3M3kAbDTPqDwKiYHnudXeGG52' },
     XRPL:     { currency: '4555524356000000000000000000000000000000', issuer: 'rUNaS5sqRuxZz6V7rBGhoSaZiVYA3ut4UL' },
     Stellar:  { code: 'EURCV', issuer: 'CANKBYNNAYKEZXLB655F2UPNTAZFK5HILZUXL7ZTFR3NF6LKDSVY7KFH' },
   },
   USDCV: {
-    Ethereum: { address: '0x5422374B27757da72d5265cC745ea906E0446634', decimals: 6 },
+    Ethereum: { address: '0x5422374B27757da72d5265cC745ea906E0446634', decimals: 18 },
     Solana:   { mint: '8smindLdDuySY6i2bStQX9o8DVhALCXCMbNxD98unx35' },
   },
 };
@@ -108,9 +108,19 @@ async function getBlockAtTs(timestamp) {
   return Number(result);
 }
 
+function parseSupply(raw, decimals) {
+  try {
+    const r = BigInt(raw);
+    const d = BigInt(10 ** decimals);
+    return Number(r / d) + Number(r % d) / 10 ** decimals;
+  } catch {
+    return Number(raw) / 10 ** decimals;
+  }
+}
+
 async function getEthSupplyAtBlock(address, decimals, blockno) {
   const raw = await etherscan({ module: 'stats', action: 'tokensupply', contractaddress: address, blockno });
-  return Number(raw) / 10 ** decimals;
+  return parseSupply(raw, decimals);
 }
 
 // ── XRPL ──────────────────────────────────────────────────────────────────────
