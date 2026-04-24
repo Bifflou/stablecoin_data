@@ -17507,19 +17507,19 @@
       "tokens": {
         "EURCV": {
           "marketcap": 100015948.62,
-          "holders": 17,
+          "holders": 9,
           "byChain": {
             "Ethereum": {
               "marketcap": 65008168.62,
-              "holders": null
+              "holders": 0
             },
             "Solana": {
               "marketcap": 9977180,
-              "holders": null
+              "holders": 0
             },
             "XRPL": {
               "marketcap": 10000000,
-              "holders": null
+              "holders": 1
             },
             "Stellar": {
               "marketcap": 15030600,
@@ -17533,11 +17533,11 @@
           "byChain": {
             "Ethereum": {
               "marketcap": 18177796,
-              "holders": null
+              "holders": 0
             },
             "Solana": {
               "marketcap": 1989380,
-              "holders": null
+              "holders": 0
             }
           }
         }
