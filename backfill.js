@@ -39,7 +39,7 @@ const TOKENS = {
     Ethereum: { address: '0x5F7827FDeb7c20b443265Fc2F40845B715385Ff2', decimals: 18 },
     Solana:   { mint: 'DghpMkatCiUsofbTmid3M3kAbDTPqDwKiYHnudXeGG52' },
     XRPL:     { currency: '4555524356000000000000000000000000000000', issuer: 'rUNaS5sqRuxZz6V7rBGhoSaZiVYA3ut4UL' },
-    Stellar:  { code: 'EURCV', issuer: 'CANKBYNNAYKEZXLB655F2UPNTAZFK5HILZUXL7ZTFR3NF6LKDSVY7KFH' },
+    Stellar:  { code: 'EURCV', issuer: 'GCEYGIVOLAVBF2TG2RUSGTUJCIN75KEX3NGLMY4VPL4GFE5L355AXW3G' },
   },
   USDCV: {
     Ethereum: { address: '0x5422374B27757da72d5265cC745ea906E0446634', decimals: 18 },
@@ -164,7 +164,14 @@ async function getStellarAsset(code, issuer) {
     `https://horizon.stellar.org/assets?asset_code=${code}&asset_issuer=${issuer}`,
     { signal: AbortSignal.timeout(10000) }
   ).then(r => r.json());
-  return res._embedded?.records?.[0] ?? null;
+  const rec = res._embedded?.records?.[0] ?? null;
+  if (!rec) return null;
+  // Normalize fields: Horizon uses balances.authorized + accounts.authorized
+  return {
+    ...rec,
+    amount:       rec.balances?.authorized ?? '0',
+    num_accounts: rec.accounts?.authorized ?? 0,
+  };
 }
 
 async function getStellarCreationTs(issuer) {

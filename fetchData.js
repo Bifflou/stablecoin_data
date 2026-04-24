@@ -47,7 +47,7 @@ const TOKENS = {
     Stellar: {
       type:   'stellar',
       code:   'EURCV',
-      issuer: 'CANKBYNNAYKEZXLB655F2UPNTAZFK5HILZUXL7ZTFR3NF6LKDSVY7KFH',
+      issuer: 'GCEYGIVOLAVBF2TG2RUSGTUJCIN75KEX3NGLMY4VPL4GFE5L355AXW3G',
     },
   },
   USDCV: {
@@ -178,9 +178,11 @@ async function fetchStellar({ code, issuer }) {
   ).then(r => r.json());
 
   const rec = res._embedded?.records?.[0] ?? {};
+  // Horizon returns balances.authorized for circulating supply
+  // and accounts.authorized for the number of authorized holders
   return {
-    marketcap: parseFloat(rec.amount ?? 0),
-    holders:   Number(rec.num_accounts ?? 0),
+    marketcap: parseFloat(rec.balances?.authorized ?? 0),
+    holders:   Number(rec.accounts?.authorized ?? 0),
   };
 }
 
