@@ -312,6 +312,7 @@ function lineOptions(fmtFn) {
   return {
     responsive: true,
     maintainAspectRatio: false,
+    spanGaps: false,  // null values show as gaps, not zeros
     interaction: { mode: 'index', intersect: false },
     plugins: {
       legend: {
@@ -319,13 +320,15 @@ function lineOptions(fmtFn) {
       },
       tooltip: {
         callbacks: {
-          label: ctx => `  ${ctx.dataset.label}: ${fmtFn(ctx.raw)}`,
+          // Skip null values in tooltip
+          label: ctx => ctx.raw == null ? null : `  ${ctx.dataset.label}: ${fmtFn(ctx.raw)}`,
         },
+        filter: item => item.raw != null,
       },
     },
     scales: {
       x: {
-        ticks: { color: '#8b949e', font: { size: 10 } },
+        ticks: { color: '#8b949e', font: { size: 10 }, maxTicksLimit: 12 },
         grid:  { color: '#21262d' },
       },
       y: {
@@ -364,7 +367,7 @@ function buildTokenLine(snapshots, field) {
     labels: snapshots.map(s => s.date),
     datasets: ['EURCV', 'USDCV'].map(token => ({
       label:           token,
-      data:            snapshots.map(s => s.tokens[token]?.[field] ?? 0),
+      data:            snapshots.map(s => s.tokens[token]?.[field] ?? null),
       borderColor:     C[token],
       backgroundColor: alpha(C[token], 0.1),
       fill:            true,
@@ -405,9 +408,13 @@ function buildChainLine(snapshots, field) {
     datasets: chains.map(chain => ({
       label:           chain,
       data:            snapshots.map(s => {
-        let sum = 0;
-        Object.values(s.tokens).forEach(t => { sum += t.byChain?.[chain]?.[field] ?? 0; });
-        return sum;
+        // Return null if this chain has no data for this snapshot (shows as gap, not zero)
+        let sum = 0, hasData = false;
+        Object.values(s.tokens).forEach(t => {
+          const val = t.byChain?.[chain]?.[field];
+          if (val != null) { sum += val; hasData = true; }
+        });
+        return hasData ? sum : null;
       }),
       borderColor:     C[chain] ?? '#888',
       backgroundColor: alpha(C[chain] ?? '#888', 0.08),
