@@ -7,18 +7,36 @@
           "marketcap": 145200000,
           "holders": 2850,
           "byChain": {
-            "Ethereum": { "marketcap": 80100000, "holders": 1350 },
-            "Solana":   { "marketcap": 37000000, "holders": 790 },
-            "XRPL":     { "marketcap": 19100000, "holders": 500 },
-            "Stellar":  { "marketcap":  9000000, "holders": 210 }
+            "Ethereum": {
+              "marketcap": 80100000,
+              "holders": 1350
+            },
+            "Solana": {
+              "marketcap": 37000000,
+              "holders": 790
+            },
+            "XRPL": {
+              "marketcap": 19100000,
+              "holders": 500
+            },
+            "Stellar": {
+              "marketcap": 9000000,
+              "holders": 210
+            }
           }
         },
         "USDCV": {
           "marketcap": 29400000,
           "holders": 1320,
           "byChain": {
-            "Ethereum": { "marketcap": 17600000, "holders": 790 },
-            "Solana":   { "marketcap": 11800000, "holders": 530 }
+            "Ethereum": {
+              "marketcap": 17600000,
+              "holders": 790
+            },
+            "Solana": {
+              "marketcap": 11800000,
+              "holders": 530
+            }
           }
         }
       }
@@ -30,18 +48,36 @@
           "marketcap": 149600000,
           "holders": 2940,
           "byChain": {
-            "Ethereum": { "marketcap": 82500000, "holders": 1390 },
-            "Solana":   { "marketcap": 38200000, "holders": 815 },
-            "XRPL":     { "marketcap": 20100000, "holders": 520 },
-            "Stellar":  { "marketcap":  8800000, "holders": 215 }
+            "Ethereum": {
+              "marketcap": 82500000,
+              "holders": 1390
+            },
+            "Solana": {
+              "marketcap": 38200000,
+              "holders": 815
+            },
+            "XRPL": {
+              "marketcap": 20100000,
+              "holders": 520
+            },
+            "Stellar": {
+              "marketcap": 8800000,
+              "holders": 215
+            }
           }
         },
         "USDCV": {
           "marketcap": 32800000,
           "holders": 1390,
           "byChain": {
-            "Ethereum": { "marketcap": 19700000, "holders": 830 },
-            "Solana":   { "marketcap": 13100000, "holders": 560 }
+            "Ethereum": {
+              "marketcap": 19700000,
+              "holders": 830
+            },
+            "Solana": {
+              "marketcap": 13100000,
+              "holders": 560
+            }
           }
         }
       }
@@ -53,18 +89,36 @@
           "marketcap": 155800000,
           "holders": 3060,
           "byChain": {
-            "Ethereum": { "marketcap": 86100000, "holders": 1450 },
-            "Solana":   { "marketcap": 39400000, "holders": 845 },
-            "XRPL":     { "marketcap": 21100000, "holders": 535 },
-            "Stellar":  { "marketcap":  9200000, "holders": 230 }
+            "Ethereum": {
+              "marketcap": 86100000,
+              "holders": 1450
+            },
+            "Solana": {
+              "marketcap": 39400000,
+              "holders": 845
+            },
+            "XRPL": {
+              "marketcap": 21100000,
+              "holders": 535
+            },
+            "Stellar": {
+              "marketcap": 9200000,
+              "holders": 230
+            }
           }
         },
         "USDCV": {
           "marketcap": 35500000,
           "holders": 1455,
           "byChain": {
-            "Ethereum": { "marketcap": 21200000, "holders": 870 },
-            "Solana":   { "marketcap": 14300000, "holders": 585 }
+            "Ethereum": {
+              "marketcap": 21200000,
+              "holders": 870
+            },
+            "Solana": {
+              "marketcap": 14300000,
+              "holders": 585
+            }
           }
         }
       }
@@ -76,18 +130,77 @@
           "marketcap": 162400000,
           "holders": 3210,
           "byChain": {
-            "Ethereum": { "marketcap": 89900000, "holders": 1525 },
-            "Solana":   { "marketcap": 41200000, "holders": 885 },
-            "XRPL":     { "marketcap": 22100000, "holders": 560 },
-            "Stellar":  { "marketcap":  9200000, "holders": 240 }
+            "Ethereum": {
+              "marketcap": 89900000,
+              "holders": 1525
+            },
+            "Solana": {
+              "marketcap": 41200000,
+              "holders": 885
+            },
+            "XRPL": {
+              "marketcap": 22100000,
+              "holders": 560
+            },
+            "Stellar": {
+              "marketcap": 9200000,
+              "holders": 240
+            }
           }
         },
         "USDCV": {
           "marketcap": 38900000,
           "holders": 1530,
           "byChain": {
-            "Ethereum": { "marketcap": 23300000, "holders": 915 },
-            "Solana":   { "marketcap": 15600000, "holders": 615 }
+            "Ethereum": {
+              "marketcap": 23300000,
+              "holders": 915
+            },
+            "Solana": {
+              "marketcap": 15600000,
+              "holders": 615
+            }
+          }
+        }
+      }
+    },
+    {
+      "date": "2026-04-24",
+      "tokens": {
+        "EURCV": {
+          "marketcap": 19977180,
+          "holders": 1,
+          "byChain": {
+            "Ethereum": {
+              "marketcap": 0,
+              "holders": 0
+            },
+            "Solana": {
+              "marketcap": 9977180,
+              "holders": 0
+            },
+            "XRPL": {
+              "marketcap": 10000000,
+              "holders": 1
+            },
+            "Stellar": {
+              "marketcap": 0,
+              "holders": 0
+            }
+          }
+        },
+        "USDCV": {
+          "marketcap": 1989380,
+          "holders": 0,
+          "byChain": {
+            "Ethereum": {
+              "marketcap": 0,
+              "holders": 0
+            },
+            "Solana": {
+              "marketcap": 1989380,
+              "holders": 0
+            }
           }
         }
       }
@@ -99,18 +212,36 @@
           "marketcap": 158700000,
           "holders": 3290,
           "byChain": {
-            "Ethereum": { "marketcap": 87700000, "holders": 1560 },
-            "Solana":   { "marketcap": 40100000, "holders": 905 },
-            "XRPL":     { "marketcap": 21500000, "holders": 575 },
-            "Stellar":  { "marketcap":  9400000, "holders": 250 }
+            "Ethereum": {
+              "marketcap": 87700000,
+              "holders": 1560
+            },
+            "Solana": {
+              "marketcap": 40100000,
+              "holders": 905
+            },
+            "XRPL": {
+              "marketcap": 21500000,
+              "holders": 575
+            },
+            "Stellar": {
+              "marketcap": 9400000,
+              "holders": 250
+            }
           }
         },
         "USDCV": {
           "marketcap": 41200000,
           "holders": 1590,
           "byChain": {
-            "Ethereum": { "marketcap": 24700000, "holders": 950 },
-            "Solana":   { "marketcap": 16500000, "holders": 640 }
+            "Ethereum": {
+              "marketcap": 24700000,
+              "holders": 950
+            },
+            "Solana": {
+              "marketcap": 16500000,
+              "holders": 640
+            }
           }
         }
       }
