@@ -407,9 +407,10 @@ function buildTokenLine(snapshots, field, converter) {
       borderColor:     C[token],
       backgroundColor: alpha(C[token], 0.1),
       fill:            true,
+      borderWidth:     1.5,
       tension:         0.35,
-      pointRadius:     3,
-      pointHoverRadius: 5,
+      pointRadius:     0,
+      pointHoverRadius: 4,
     })),
   };
 }
@@ -460,9 +461,10 @@ function buildChainLine(snapshots, field, converter) {
       borderColor:     C[chain] ?? '#888',
       backgroundColor: alpha(C[chain] ?? '#888', 0.08),
       fill:            false,
+      borderWidth:     1.5,
       tension:         0.35,
-      pointRadius:     3,
-      pointHoverRadius: 5,
+      pointRadius:     0,
+      pointHoverRadius: 4,
     })),
   };
 }
