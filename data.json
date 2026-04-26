@@ -17583,6 +17583,47 @@
           }
         }
       }
+    },
+    {
+      "date": "2026-04-26",
+      "tokens": {
+        "EURCV": {
+          "marketcap": 99725682.84,
+          "holders": 9,
+          "byChain": {
+            "Ethereum": {
+              "marketcap": 64717902.84,
+              "holders": 0
+            },
+            "Solana": {
+              "marketcap": 9977180,
+              "holders": 0
+            },
+            "XRPL": {
+              "marketcap": 10000000,
+              "holders": 1
+            },
+            "Stellar": {
+              "marketcap": 15030600,
+              "holders": 8
+            }
+          }
+        },
+        "USDCV": {
+          "marketcap": 20167176,
+          "holders": 0,
+          "byChain": {
+            "Ethereum": {
+              "marketcap": 18177796,
+              "holders": 0
+            },
+            "Solana": {
+              "marketcap": 1989380,
+              "holders": 0
+            }
+          }
+        }
+      }
     }
   ]
 }
